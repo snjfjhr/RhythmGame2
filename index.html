@@ -2,13 +2,13 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>2レーン音ゲー（スマホ対応・オフセット対応）</title>
+<title>龍踊囃子太鼓</title>
 <style>
 body { margin:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; }
 canvas { display:block; background:black; touch-action:none; }
-#ui { position:absolute; top:0; left:0; width:100%; height:100%; display:flex;
-      justify-content:center; align-items:center; flex-direction:column; }
-button { font-size:8vw; padding:2vh 5vw; margin:2vh; cursor:pointer; }
+#ui { position:absolute; top:0; left:0; width:100%; height:100%;
+      display:flex; justify-content:center; align-items:center; flex-direction:column; pointer-events:none; }
+button { font-size:8vw; padding:2vh 5vw; margin:2vh; cursor:pointer; pointer-events:auto; }
 </style>
 </head>
 <body>
@@ -29,7 +29,7 @@ let hitDisplayTime = 500;
 let chart=[], notes=[], startTime=null;
 let score=0, combo=0, gameState="start", currentHitText=null, currentCountdown=null;
 let hitCounts={PERFECT:0,GOOD:0,MISS:0};
-let chartOffset = 0; // JSONで指定するオフセット（秒）
+let offsetSec = 0; // JSONで設定したオフセット（秒）
 
 const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
 let bgmBuffer=null, bgmSource=null;
@@ -48,7 +48,7 @@ resizeCanvas();
 fetch("chart.json")
 .then(res=>res.json())
 .then(data=>{
-    chartOffset = data.offset || 0;
+    offsetSec = data.offset || 0;
     chart = parseChartTiming(data);
     notes = chart.map(n=>({...n, hit:false}));
     if(data.bgm){
@@ -66,8 +66,8 @@ function parseChartTiming(jsonChart){
     const beatsPerMeasure=jsonChart.timeSignature[0];
     const secPerBeat=60/bpm;
     return jsonChart.notes.map(n=>({
-        startTime: ((n.measure-1)*beatsPerMeasure + (n.beat-1))*secPerBeat + chartOffset,
-        lane: n.lane
+        startTime: ((n.measure-1)*beatsPerMeasure + (n.beat-1))*secPerBeat
+    ,   lane: n.lane
     }));
 }
 
@@ -98,7 +98,7 @@ function startCountdown(){
 }
 
 function startBGMAndGame(){
-    startTime = audioCtx.currentTime;
+    startTime = audioCtx.currentTime + offsetSec; // offset反映
     if(bgmBuffer){
         bgmSource=audioCtx.createBufferSource();
         bgmSource.buffer=bgmBuffer;
@@ -176,7 +176,7 @@ document.addEventListener("keydown",e=>{
     if(e.key=="j"||e.key=="J") judge(1);
 });
 
-// タップ/クリック操作（レーン上ならどこでも判定）
+// タップ/クリック操作（スマホ確実対応）
 function handleTap(clientX){
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width/rect.width;
@@ -185,11 +185,16 @@ function handleTap(clientX){
     judge(lane);
 }
 
-// pointerdownでスマホ/PC両対応
-canvas.addEventListener("pointerdown", e=>{
+function handlePointer(e){
     if(gameState!=="playing") return;
-    handleTap(e.clientX);
-});
+    let clientX = e.clientX;
+    if(e.touches) clientX = e.touches[0].clientX;
+    handleTap(clientX);
+    e.preventDefault();
+}
+
+canvas.addEventListener("pointerdown", handlePointer, {passive:false});
+canvas.addEventListener("touchstart", handlePointer, {passive:false});
 
 function update(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
