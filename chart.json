@@ -2,6 +2,7 @@
   "bpm": 95,
   "timeSignature": [4, 4],
   "bgm": "Music_fast.mp3",
+  "offset": 0.1,
   "notes": [
     { "measure": 1, "beat": 3, "lane": 0 },
     { "measure": 1, "beat": 3, "lane": 1 },
