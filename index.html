@@ -2,13 +2,12 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>龍踊囃子太鼓</title>
+<title>2レーン音ゲー（スマホ対応・オフセット対応）</title>
 <style>
 body { margin:0; background:#111; color:white; font-family:sans-serif; overflow:hidden; }
 canvas { display:block; background:black; touch-action:none; }
 #ui { position:absolute; top:0; left:0; width:100%; height:100%; display:flex;
       justify-content:center; align-items:center; flex-direction:column; }
-#ui.playing { pointer-events: none; } /* ゲーム中はUIがタッチを奪わない */
 button { font-size:8vw; padding:2vh 5vw; margin:2vh; cursor:pointer; }
 </style>
 </head>
@@ -30,6 +29,7 @@ let hitDisplayTime = 500;
 let chart=[], notes=[], startTime=null;
 let score=0, combo=0, gameState="start", currentHitText=null, currentCountdown=null;
 let hitCounts={PERFECT:0,GOOD:0,MISS:0};
+let chartOffset = 0; // JSONで指定するオフセット（秒）
 
 const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
 let bgmBuffer=null, bgmSource=null;
@@ -48,6 +48,7 @@ resizeCanvas();
 fetch("chart.json")
 .then(res=>res.json())
 .then(data=>{
+    chartOffset = data.offset || 0;
     chart = parseChartTiming(data);
     notes = chart.map(n=>({...n, hit:false}));
     if(data.bgm){
@@ -65,14 +66,13 @@ function parseChartTiming(jsonChart){
     const beatsPerMeasure=jsonChart.timeSignature[0];
     const secPerBeat=60/bpm;
     return jsonChart.notes.map(n=>({
-        startTime: ((n.measure-1)*beatsPerMeasure + (n.beat-1))*secPerBeat,
+        startTime: ((n.measure-1)*beatsPerMeasure + (n.beat-1))*secPerBeat + chartOffset,
         lane: n.lane
     }));
 }
 
 function showStartScreen(){
     gameState="start"; ui.innerHTML="";
-    ui.classList.remove('playing'); // UIを操作可能に戻す
     notes = chart.map(n=>({...n, hit:false}));
 
     const btn = document.createElement('button');
@@ -87,7 +87,6 @@ function showStartScreen(){
 function startCountdown(){
     gameState="countdown"; ui.innerHTML="";
     currentCountdown=3;
-    ui.classList.remove('playing');
     const interval = setInterval(()=>{
         currentCountdown--;
         if(currentCountdown<=0){
@@ -114,28 +113,11 @@ function startGame(){
     gameState="playing";
     score=0; combo=0; currentHitText=null;
     hitCounts={PERFECT:0,GOOD:0,MISS:0};
-    ui.classList.add('playing'); // ゲーム中はUIを無効化
-}
-
-// 判定
-function judge(lane){
-    if(!notes.length || !startTime || gameState!=="playing") return;
-    const now = audioCtx.currentTime - startTime;
-    for(let note of notes){
-        if(!note.hit && note.lane===lane){
-            const diff = now - note.startTime;
-            if(Math.abs(diff)<=hitRangePerfectSec){ note.hit=true; score+=100; combo++; showHitText("PERFECT"); return; }
-            else if(Math.abs(diff)<=hitRangeGoodSec){ note.hit=true; score+=50; combo++; showHitText("GOOD"); return; }
-        }
-    }
-    combo=0; showHitText("MISS");
 }
 
 function showResultScreen(){
     if(bgmSource) bgmSource.stop();
-    gameState="result";
-    ui.classList.remove('playing'); // UIを操作可能に戻す
-    ui.innerHTML="";
+    gameState="result"; ui.innerHTML="";
 
     const div=document.createElement('div');
     div.style.fontSize='6vw';
@@ -157,7 +139,6 @@ function showResultScreen(){
     ui.appendChild(retryBtn);
 }
 
-// ノーツ描画
 function drawBackground(){
     ctx.strokeStyle="white";
     ctx.beginPath(); ctx.moveTo(laneWidth,0); ctx.lineTo(laneWidth,canvas.height); ctx.stroke();
@@ -176,28 +157,40 @@ function showHitText(text){
     });
 }
 
+function judge(lane){
+    if(!notes.length || !startTime || gameState!=="playing") return;
+    const now = audioCtx.currentTime - startTime;
+    for(let note of notes){
+        if(!note.hit && note.lane===lane){
+            const diff = now - note.startTime;
+            if(Math.abs(diff)<=hitRangePerfectSec){ note.hit=true; score+=100; combo++; showHitText("PERFECT"); return; }
+            else if(Math.abs(diff)<=hitRangeGoodSec){ note.hit=true; score+=50; combo++; showHitText("GOOD"); return; }
+        }
+    }
+    combo=0; showHitText("MISS");
+}
+
 // キーボード対応
 document.addEventListener("keydown",e=>{
     if(e.key=="f"||e.key=="F") judge(0);
     if(e.key=="j"||e.key=="J") judge(1);
 });
 
-// タッチ/クリック操作
+// タップ/クリック操作（レーン上ならどこでも判定）
 function handleTap(clientX){
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
+    const scaleX = canvas.width/rect.width;
     const x = (clientX - rect.left) * scaleX;
     const lane = x < laneWidth ? 0 : 1;
     judge(lane);
 }
 
 // pointerdownでスマホ/PC両対応
-document.addEventListener("pointerdown", e=>{
+canvas.addEventListener("pointerdown", e=>{
     if(gameState!=="playing") return;
     handleTap(e.clientX);
 });
 
-// ゲームループ
 function update(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
     drawBackground();
